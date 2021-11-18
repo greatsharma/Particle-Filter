@@ -91,7 +91,7 @@ if __name__ == "__main__":
             print("Converged !")
             break
         
-        plt.savefig(f"{dir_path}particlefilter_{i}.jpg")
+        plt.savefig(f"{dir_path}{i}.jpg")
         plt.savefig(f"particle_filter.jpg")
         plt.close()
 
@@ -110,14 +110,14 @@ if __name__ == "__main__":
 
         time.sleep(0.5)
 
-    plt.savefig(f"{dir_path}particlefilter_{i}.jpg")
+    plt.savefig(f"{dir_path}{i}.jpg")
     plt.savefig(f"particle_filter.jpg")
     plt.close()
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     videowriter = cv2.VideoWriter("particle_filter.mp4", fourcc, 1, (640,480))
 
-    for im in sorted(os.listdir(dir_path)):
+    for im in sorted(os.listdir(dir_path), key=lambda x: int(x.split(".")[0])):
         img = cv2.imread(dir_path + im)
         videowriter.write(img)
 
