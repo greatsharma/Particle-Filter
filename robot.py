@@ -2,6 +2,7 @@ import time
 import random
 from math import *
 import matplotlib.pyplot as plt
+from scipy.stats import bernoulli
 
 
 class Robot():
@@ -13,6 +14,9 @@ class Robot():
         self.y_pos = random.uniform(0., self.y_range)
         self.forward_noise = 0.0
         self.sense_noise = 0.0
+
+        self.fix_xdirection = "random"
+        self.fix_ydirection = "random"
 
         if landmarks:
             if any(len(lm) != 2 for lm in landmarks):
@@ -47,16 +51,25 @@ class Robot():
         return sensor_z
 
     def move(self, x_move, y_move):
-        if x_move < 0.0 or y_move < 0.0:
-            raise ValueError('moves cannot be negative')
-
         if x_move:
             self.x_pos += x_move + random.gauss(0., self.forward_noise)
-            self.x_pos %= self.x_range
-
+            
+            if self.x_pos >= self.x_range:
+                self.x_pos -= x_move + random.gauss(0., self.forward_noise)
+                self.fix_xdirection = "negative"
+            elif self.x_pos <= 0:
+                self.x_pos += x_move + random.gauss(0., self.forward_noise)
+                self.fix_xdirection = "positive"
+            
         if y_move:
             self.y_pos += y_move + random.gauss(0., self.forward_noise)
-            self.y_pos %= self.y_range
+
+            if self.y_pos >= self.y_range:
+                self.y_pos -= y_move + random.gauss(0., self.forward_noise)
+                self.fix_ydirection = "negative"
+            elif self.y_pos <= 0:
+                self.y_pos += y_move + random.gauss(0., self.forward_noise)
+                self.fix_ydirection = "positive"
 
     def measurement_likelihood(self, sensor_z: list):
         if len(sensor_z) != len(self.landmarks):
@@ -101,16 +114,21 @@ class Robot():
 
 
 def plot_model(map, landmarks, robot, particles):
+    plt.plot((0, 0), (map[0], 0), "--", c="black")
+    plt.plot((map[0], 0), (map[0], map[1]), "--", color="black")
+    plt.plot((map[0], map[1]), (0, map[1]), "--", color="black")
+    plt.plot((0, map[1]), (0, 0), "--", color="black")
+
     plt.scatter([lm[0] for lm in landmarks], [lm[1] for lm in landmarks], s=60, color="black")
 
     xcoords = [p.x_pos for p in particles]
     ycoords = [p.y_pos for p in particles]
-    plt.scatter(xcoords, ycoords, s=5, alpha=0.25, color="blue")
+    plt.scatter(xcoords, ycoords, s=2, alpha=0.2, color="green")
 
-    plt.scatter(robot.x_pos, robot.y_pos, s=5, alpha=1, color="red")
+    plt.scatter(robot.x_pos, robot.y_pos, s=6, alpha=1, color="red")
 
     ax = plt.gca()
-    ax.set_xlim([-10, map[0]+30])
+    ax.set_xlim([-10, map[0]+25])
     ax.set_ylim([-10, map[1]+30])
 
 
@@ -144,6 +162,30 @@ def resample(particles, weights, map, landmarks, num_particles, randomness=0):
     return sampled_particles
 
 
+def get_moves(xdirection, ydirection):
+    xmov_range = (1, 4)
+    ymov_range = (1, 4)
+    if bernoulli.rvs(p=0.3, size=1)[0]:
+        xmov_range = (4, 8)
+        ymov_range = (4, 8)
+
+    if xdirection == "positive":
+        x_move = random.randint(*xmov_range)
+    elif xdirection == "negative":
+        x_move = random.randint(-xmov_range[0], -xmov_range[1])
+    else:
+        x_move = random.randint(*xmov_range) * random.choices([-1, 1], [1, 1])[0]
+
+    if ydirection == "positive":
+        y_move = random.randint(*ymov_range)
+    elif ydirection == "negative":
+        y_move = random.randint(-ymov_range[0], -ymov_range[1])
+    else:
+        y_move = random.randint(*ymov_range) * random.choices([-1, 1], [1, 1])[0]
+    
+    return x_move, y_move
+
+
 def apply_particle_filter(map, landmarks, n_particles, n_iter):
     robot = Robot(map, landmarks)
     robot.set_noise([0.0, 1.5])
@@ -166,13 +208,19 @@ def apply_particle_filter(map, landmarks, n_particles, n_iter):
 
         plot_model(map, landmarks, robot, particles)
         
-        plt.annotate(f"Iteration {iter}", (10, 120), color="r")
-        plt.annotate(f"Total particles {n_particles}", (10, 113), color="r")
-        plt.annotate(f"Loss {loss(robot, particles, map)}", (70, 120), color="r")
+        plt.annotate(f"Iteration {iter}", (10, 120), color="orange")
+        plt.annotate(f"Total particles {n_particles}", (10, 113), color="orange")
+        plt.annotate(f"Loss {loss(robot, particles, map)}", (70, 120), color="orange")
 
-        plt.annotate(f"x:{round(robot.x_pos)}", (robot.x_pos+6, robot.y_pos+8), color="g")
-        plt.annotate(f"y:{round(robot.y_pos)}", (robot.x_pos+6, robot.y_pos+2), color="g")
-        plt.annotate(f"z:{[round(z) for z in sensor_z]}",(robot.x_pos+6, robot.y_pos-4),color="g")
+        particles_meanx = sum([p.x_pos for p in particles]) / n_particles
+        particles_meany = sum([p.y_pos for p in particles]) / n_particles
+        plt.scatter(particles_meanx, particles_meany, s=6, alpha=1, color="blue")
+        plt.annotate(f"{round(particles_meanx)}:x", (robot.x_pos-12, robot.y_pos+8), color="blue")
+        plt.annotate(f"{round(particles_meany)}:y", (robot.x_pos-12, robot.y_pos+2), color="blue")
+
+        plt.annotate(f"x:{round(robot.x_pos)}", (robot.x_pos+6, robot.y_pos+8), color="r")
+        plt.annotate(f"y:{round(robot.y_pos)}", (robot.x_pos+6, robot.y_pos+2), color="r")
+        plt.annotate(f"z:{[round(z) for z in sensor_z]}",(robot.x_pos+6, robot.y_pos-4),color="r")
 
         for idx, lm in enumerate(landmarks):
            plt.annotate(f"Z{idx+1}", (lm[0], lm[1]-8), color="black")
@@ -188,15 +236,14 @@ def apply_particle_filter(map, landmarks, n_particles, n_iter):
         weights = [w/(w_norm + 1e-6) for w in weights]
 
         # resampling
-        if loss(robot, particles, map) < 2:
-            n_particles = max(50, n_particles - int(n_particles * 0.1))
+        if loss(robot, particles, map) < 2.5:
+            n_particles = max(75, n_particles - int(n_particles * 0.1))
         else:
-            n_particles = min(200, n_particles + int(n_particles * 0.2))
+            n_particles = min(125, n_particles + int(n_particles * 0.2))
 
         particles = resample(particles, weights, map, landmarks, num_particles=n_particles, randomness=1)
 
-        x_move = random.randint(1, 4)
-        y_move = random.randint(1, 4)
+        x_move, y_move = get_moves(robot.fix_xdirection, robot.fix_ydirection)
         robot.move(x_move, y_move)
 
         for p in particles:
