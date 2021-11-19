@@ -1,5 +1,8 @@
+import os
+import cv2
 import time
 import random
+import shutil
 from math import *
 import matplotlib.pyplot as plt
 from scipy.stats import bernoulli
@@ -113,7 +116,7 @@ class Robot():
         return '[x_pos: {}  y_pos: {}]'.format(self.x_pos, self.y_pos)
 
 
-def plot_model(map, landmarks, robot, particles, iter, n_particles, x_move, y_move, sensor_z):
+def plot_model(map, landmarks, robot, particles, iter, n_particles, x_move, y_move, sensor_z, img_save_dir):
     plt.plot((0, 0), (map[0], 0), "--", c="black")
     plt.plot((map[0], 0), (map[0], map[1]), "--", color="black")
     plt.plot((map[0], map[1]), (0, map[1]), "--", color="black")
@@ -150,8 +153,11 @@ def plot_model(map, landmarks, robot, particles, iter, n_particles, x_move, y_mo
     ax = plt.gca()
     ax.set_xlim([-10, map[0]+25])
     ax.set_ylim([-10, map[1]+30])
+    ax.set_xticks([])
+    ax.set_yticks([])
 
-    plt.savefig(f"robot.jpg")
+    plt.savefig(f"{img_save_dir}{iter}.jpg")
+    plt.savefig("robot.jpg")
     plt.close()
 
 
@@ -218,7 +224,7 @@ def get_moves(xdirection, ydirection):
     return x_move, y_move
 
 
-def apply_particle_filter(map, landmarks, n_particles, n_iter):
+def apply_particle_filter(map, landmarks, n_particles, n_iter, img_save_dir):
     robot = Robot(map, landmarks)
     robot.set_noise([1.0, 1.5])
 
@@ -238,7 +244,7 @@ def apply_particle_filter(map, landmarks, n_particles, n_iter):
     for iter in range(n_iter):
         sensor_z = robot.sense()
 
-        plot_model(map, landmarks, robot, particles, iter, n_particles, x_move, y_move, sensor_z)
+        plot_model(map, landmarks, robot, particles, iter, n_particles, x_move, y_move, sensor_z, img_save_dir)
         
         weights = []
         for p in particles:
@@ -271,12 +277,25 @@ def apply_particle_filter(map, landmarks, n_particles, n_iter):
         for p in particles:
             p.move(x_move, y_move)
 
-        time.sleep(1)
-
-    return robot, particles
+        time.sleep(0.5)
 
 
 if __name__ == '__main__':
+    dir_path = ".temp_images/"
+    if os.path.isdir(dir_path):
+        shutil.rmtree(dir_path)
+    os.mkdir(dir_path)
+
     map = [100, 100]
     landmarks = [[20., 20.], [80., 80], [20., 80.], [80., 20.]]
-    robot, particles = apply_particle_filter(map, landmarks, 100, n_iter=50)
+    apply_particle_filter(map, landmarks, 100, n_iter=25, img_save_dir=dir_path)
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    videowriter = cv2.VideoWriter("robot.mp4", fourcc, 1, (640,480))
+
+    for im in sorted(os.listdir(dir_path), key=lambda x: int(x.split(".")[0])):
+        img = cv2.imread(dir_path + im)
+        videowriter.write(img)
+
+    videowriter.release()
+    shutil.rmtree(dir_path)
